@@ -4,10 +4,14 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { travelCountries } from './data/travelCountries.js'
+import { travelCities } from './data/travelCountries.js'
+import { fetchUnsplashImage } from './services/imageService.js'
 
 dotenv.config()
 const __filename = fileURLToPath(import.meta.url)
 const __dirname  = path.dirname(__filename)
+const matches = travelCountries.filter(...)
 
 const app = express()
 const PORT = process.env.PORT || 4000
@@ -76,13 +80,23 @@ app.post('/api/georeverse/guess', (req, res) => {
 })
 
 // — TRAVEL MATCHMAKER —
-app.post('/api/travelmatch', (req, res) => {
-  const { interests=[] } = req.body
-  // naive stub: always same two suggestions
-  res.json([
-    { place:'Santorini', description:'Aegean sunsets', image:'/images/santorini.jpg' },
-    { place:'Kyoto',     description:'Historic temples', image:'/images/kyoto.jpg' },
-  ])
+app.post('/api/travelmatch', async (req, res) => {
+  const { interests = [] } = req.body
+  try {
+    const matches = travelCities.filter(loc =>
+      interests.some(tag => loc.tags.includes(tag))
+    )
+
+    const topResults = await Promise.all(matches.slice(0, 10).map(async loc => ({
+      ...loc,
+      image: await fetchUnsplashImage(loc.name + ' ' + loc.country)
+    })))
+
+    res.json(topResults)
+  } catch (e) {
+    console.error('Matchmaker error:', e)
+    res.status(500).json({ error: 'Failed to get travel matches' })
+  }
 })
 
 // — GLOBAL ADVENTURE —

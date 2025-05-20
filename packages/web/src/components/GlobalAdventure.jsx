@@ -9,10 +9,22 @@ export default function GlobalAdventure() {
   const flip = useRef(new Audio(`${process.env.PUBLIC_URL}/sounds/page-flip.mp3`))
   const fanfare = useRef(new Audio(`${process.env.PUBLIC_URL}/sounds/fanfare-announcement.mp3`))
 
-  useEffect(()=>{
+  useEffect(() => {
     fetch(`/api/adventure/next?step=${step}`)
-      .then(r=>r.json()).then(s=>setScene(s))
-  },[step])
+      .then(async (r) => {
+        if (!r.ok) {
+          const msg = await r.text()
+          throw new Error(`Server error: ${msg}`)
+        }
+        return r.json()
+      })
+      .then(s => setScene(s))
+      .catch(err => {
+        console.error("Error fetching adventure scene:", err)
+        setScene({ text: "Error loading scene. Please try again.", choices: [] })
+      })
+  }, [step])
+  
 
   if(!scene) return <p className="p-6">Loading…</p>
   if(scene.choices.length===0) {

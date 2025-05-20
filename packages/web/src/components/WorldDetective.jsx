@@ -9,16 +9,55 @@ export default function WorldDetective() {
   const [loading, setL] = useState(true)
   const drum = useRef(new Audio(`${process.env.PUBLIC_URL}/sounds/drum-roll.mp3`))
 
-  useEffect(()=>{
+  useEffect(() => {
     setL(true)
     fetch(`/api/detective/clue/${i}`)
-      .then(r=>r.json()).then(d=>{
+      .then(async (r) => {
+        if (!r.ok) {
+          const msg = await r.text()
+          throw new Error(`Server error: ${msg}`)
+        }
+        return r.json()
+      })
+      .then(d => {
         setClue(d.clue)
         setL(false)
         drum.current.play()
       })
-      .catch(console.error)
-  },[i])
+      .catch(err => {
+        console.error("Error fetching clue:", err)
+        setClue("Error loading clue.")
+        setL(false)
+      })
+  }, [i])
+  
+
+  function find() {
+    setL(true)
+    fetch('/api/travelmatch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        interests: Object.keys(prefs).filter(k => prefs[k])
+      })
+    })
+      .then(async (r) => {
+        if (!r.ok) {
+          const msg = await r.text()
+          throw new Error(`Server error: ${msg}`)
+        }
+        return r.json()
+      })
+      .then(d => {
+        setR(d)
+        ding.current.play()
+      })
+      .catch(err => {
+        console.error("Error fetching travelmatch:", err)
+        setR([])
+      })
+      .finally(() => setL(false))
+  }
 
   if(loading) return <p className="p-6">Loading…</p>
   return (
