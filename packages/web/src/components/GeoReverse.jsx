@@ -1,109 +1,194 @@
 // packages/web/src/components/GeoReverse.jsx
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+
+
+// Version: v2.0 - Added mode toggle, two-game logic, and updated UI integration
+// Version: v2.3 - Added Map Visualization for GeoReverse AI Final Guess
+
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import CountryMap from './CountryMap'
 
-export default function FlagGuesser() {
+export default function GeoReverse() {
   const nav = useNavigate()
-  const MAX=10, T=15
+  const [mode, setMode] = useState(null) // 'player' or 'ai'
+  const [questions, setQuestions] = useState([])
+  const [questionIndex, setQuestionIndex] = useState(0)
+  const [answers, setAnswers] = useState([])
+  const [guess, setGuess] = useState('')
+  const [result, setResult] = useState(null)
 
-  const [q, setQ]         = useState(null)
-  const [round, setRound] = useState(1)
-  const [score, setScore] = useState(0)
-  const [streak, setStreak] = useState(0)
-  const [fb, setFB]       = useState('')
-  const [hint, setHint]   = useState(false)
-  const [time, setTime]   = useState(T)
-  const timer = useRef(null)
-  const ding = useRef(new Audio(`${process.env.PUBLIC_URL}/sounds/correct-3.mp3`))
-  const buzz = useRef(new Audio(`${process.env.PUBLIC_URL}/sounds/wrong-buzzer.mp3`))
-  const tick = useRef(new Audio(`${process.env.PUBLIC_URL}/sounds/simple-countdown.mp3`))
-  const reveal = useRef(new Audio(`${process.env.PUBLIC_URL}/sounds/fanfare-announcement.mp3`))
+  // AI Mode State
+  const [aiQuestion, setAIQuestion] = useState(null)
+  const [aiGuess, setAIGuess] = useState(null)
+  const [aiDone, setAIDone] = useState(false)
+  const [aiLoading, setAILoading] = useState(false)
+
+  const MAX = 20
   const flip = useRef(new Audio(`${process.env.PUBLIC_URL}/sounds/page-flip.mp3`))
+  const fanfare = useRef(new Audio(`${process.env.PUBLIC_URL}/sounds/fanfare-announcement.mp3`))
 
-  const loadQ = useCallback(()=>{
-    setFB(''); setHint(false); setTime(T)
-    fetch('/api/flagguesser')
-      .then(r=>r.json()).then(q=>{ setQ(q); reveal.current.play() })
-      .catch(console.error)
-  },[])
-
-  useEffect(()=>{ if(round<=MAX) loadQ() },[loadQ,round])
-
-  useEffect(()=>{
-    if(fb) return
-    clearInterval(timer.current)
-    tick.current.play()
-    timer.current = setInterval(()=>{
-      setTime(t=> t<=1 ? (clearInterval(timer.current), handleGuess(null),0) : t-1)
-    },1000)
-    return ()=>clearInterval(timer.current)
-  },[q,fb])
-
-  function handleGuess(choice){
-    if(!q||fb) return
-    clearInterval(timer.current)
-    const ok = choice===q.answer
-    if(ok){ ding.current.play(); setScore(s=>s+1); setStreak(s=>s+1); setFB('✅ Correct!') }
-    else { buzz.current.play(); setStreak(0); setFB(`❌ Nope—was ${q.answer}`) }
-    setTimeout(()=>{
-      flip.current.play()
-      if(round<MAX) setRound(r=>r+1)
-      else setFB(`🎉 Game Over! You scored ${score+(ok?1:0)} / ${MAX}`)
-    },800)
+  // mock coordinates for AI guess visual (to be replaced with actual backend data)
+  const guessCoords = {
+    'Japan': { lat: 35.68, lng: 139.69 },
+    'Canada': { lat: 45.42, lng: -75.69 },
+    'Egypt': { lat: 30.04, lng: 31.24 },
+    'Brazil': { lat: -15.79, lng: -47.88 }
   }
 
-  const reset=()=>{setScore(0);setStreak(0);setRound(1);setFB('')}
+  useEffect(() => {
+    if (mode === 'player') {
+      fetch('/api/georeverse/questions')
+        .then(res => res.json())
+        .then(setQuestions)
+        .catch(console.error)
+    }
+  }, [mode])
 
-  if(round>MAX) return (
-    <div className="container mx-auto p-6 text-center">
-      <h2 className="text-2xl mb-4">Game Over</h2>
-      <p>Final score: <strong>{score}</strong></p>
-      <p>Highest streak: <strong>{streak}</strong></p>
-      <button onClick={reset} className="btn-simple mr-4">Play Again</button>
-      <button onClick={()=>nav('/')} className="btn-simple">Back</button>
+  async function startAIMode() {
+    setAILoading(true)
+    await fetch('/api/georeverse/ai/start', { method: 'POST' })
+    const res = await fetch('/api/georeverse/ai/question')
+    const data = await res.json()
+    if (data.done) {
+      setAIGuess(data.guess)
+      setAIDone(true)
+    } else {
+      setAIQuestion(data)
+    }
+    setAILoading(false)
+  }
+
+  async function answerAI(value) {
+    flip.current.play()
+    setAILoading(true)
+    await fetch('/api/georeverse/ai/answer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: aiQuestion.key, value })
+    })
+    const res = await fetch('/api/georeverse/ai/question')
+    const data = await res.json()
+    if (data.done) {
+      setAIGuess(data.guess)
+      setAIDone(true)
+      fanfare.current.play()
+    } else {
+      setAIQuestion(data)
+    }
+    setAILoading(false)
+  }
+
+  const handleAnswer = (value) => {
+    flip.current.play()
+    setAnswers([...answers, value])
+    setQuestionIndex(q => q + 1)
+  }
+
+  const submitGuess = () => {
+    fetch('/api/georeverse/guess', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers, guess })
+    })
+      .then(res => res.json())
+      .then(data => {
+        setResult(data)
+        fanfare.current.play()
+      })
+      .catch(console.error)
+  }
+
+  const restart = () => {
+    setMode(null)
+    setQuestions([])
+    setAnswers([])
+    setGuess('')
+    setResult(null)
+    setQuestionIndex(0)
+    setAIQuestion(null)
+    setAIGuess(null)
+    setAIDone(false)
+    setAILoading(false)
+  }
+
+  if (!mode) return (
+    <div className="p-6 text-center space-y-6 max-w-md mx-auto">
+      <h2 className="text-2xl font-bold">20Q: Guess the Country</h2>
+      <p className="text-gray-600">Choose a game mode:</p>
+      <div className="flex justify-around">
+        <button className="btn-simple" onClick={() => setMode('player')}>I’ll Guess</button>
+        <button className="btn-simple" onClick={() => { setMode('ai'); startAIMode() }}>AI Guesses</button>
+      </div>
+      <button onClick={() => nav('/')} className="btn-simple">Back</button>
     </div>
   )
-  if(!q) return <p className="p-6">Loading…</p>
 
-  return (
-    <div className="container mx-auto p-6 max-w-md bg-white rounded shadow-lg">
-      <div className="flex justify-between mb-4">
-        <span>Round {round}/{MAX}</span>
-        <span>⏲️ {time}s</span>
+  if (mode === 'player') {
+    if (result) return (
+      <div className="p-6 text-center space-y-4 max-w-md mx-auto">
+        <h2 className="text-xl">Your Final Guess</h2>
+        <p>You guessed: <strong>{result.guess}</strong></p>
+        <p>{result.correct ? '✅ Correct!' : '❌ Incorrect'}</p>
+        <button onClick={restart} className="btn-simple">Try Again</button>
+        <button onClick={() => nav('/')} className="btn-simple">Back</button>
       </div>
-
-      <h2 className="text-xl mb-2">Guess the Flag</h2>
-      <p className="mb-4 text-gray-600">
-        Score: {score} · Streak: {streak}
-      </p>
-      <div className="mb-4 flex justify-center">
-        <img src={q.flagUrl} alt="" className="h-24 object-contain border" />
+    )
+    if (questionIndex >= MAX) return (
+      <div className="p-6 text-center max-w-md mx-auto space-y-4">
+        <h2 className="text-xl">Make Your Final Guess</h2>
+        <input
+          value={guess}
+          onChange={e => setGuess(e.target.value)}
+          placeholder="Enter country name"
+          className="w-full border p-2 rounded"
+        />
+        <button onClick={submitGuess} className="btn-simple">Submit Guess</button>
+        <button onClick={restart} className="btn-simple">Restart</button>
       </div>
-
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        {q.options.map(opt=>(
-          <button
-            key={opt}
-            className="btn-simple"
-            onClick={()=>handleGuess(opt)}
-            disabled={!!fb}
-          >{opt}</button>
-        ))}
+    )
+    return (
+      <div className="p-6 max-w-md mx-auto space-y-4 text-center">
+        <h2 className="text-xl">Question {questionIndex + 1} of {MAX}</h2>
+        <p>{questions[questionIndex]?.question}</p>
+        <div className="flex justify-around">
+          <button className="btn-simple" onClick={() => handleAnswer(true)}>Yes</button>
+          <button className="btn-simple" onClick={() => handleAnswer(false)}>No</button>
+          <button className="btn-simple" onClick={() => handleAnswer(null)}>Unknown</button>
+        </div>
+        <button onClick={restart} className="btn-simple">Give Up</button>
+        <button onClick={() => nav('/')} className="btn-simple">Back</button>
       </div>
+    )
+  }
 
-      {hint
-        ? <p className="mb-2 italic text-gray-500">Continent: {q.continent}</p>
-        : <button
-            className="btn-simple mb-4"
-            onClick={()=>setHint(true)}
-            disabled={!!fb}
-          >Show Continent Hint</button>
-      }
-
-      {fb && <p className="mb-4 text-center font-medium">{fb}</p>}
-      <div className="flex justify-between">
-        <button onClick={()=>nav('/')} className="btn-simple">Back</button>
+  if (mode === 'ai') {
+    if (aiLoading) return <p className="p-6 text-center">Loading AI...</p>
+    if (aiDone) return (
+      <div className="p-6 text-center space-y-4 max-w-md mx-auto">
+        <h2 className="text-xl">AI's Final Guess</h2>
+        <p>The AI thinks your country is:</p>
+        <p className="text-2xl font-bold">{aiGuess}</p>
+        {aiGuess && guessCoords[aiGuess] && (
+          <CountryMap lat={guessCoords[aiGuess].lat} lng={guessCoords[aiGuess].lng} useMapbox={false} />
+        )}
+        <button onClick={restart} className="btn-simple">Play Again</button>
+        <button onClick={() => nav('/')} className="btn-simple">Back</button>
       </div>
-    </div>
-  )
+    )
+    return (
+      <div className="p-6 text-center space-y-4 max-w-md mx-auto">
+        <h2 className="text-xl">AI Asks:</h2>
+        <p>{aiQuestion?.question}</p>
+        <div className="flex justify-around">
+          <button className="btn-simple" onClick={() => answerAI(true)}>Yes</button>
+          <button className="btn-simple" onClick={() => answerAI(false)}>No</button>
+          <button className="btn-simple" onClick={() => answerAI(null)}>Unknown</button>
+        </div>
+        <button onClick={restart} className="btn-simple">Give Up</button>
+        <button onClick={() => nav('/')} className="btn-simple">Back</button>
+      </div>
+    )
+  }
+
+  return null
 }
