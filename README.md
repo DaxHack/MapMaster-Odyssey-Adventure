@@ -202,6 +202,6 @@ Email: daxdaniel2013@gmail.com
 
 Website: https://daxcollective.com
 
-YouTube: Dax the Traveler / Timezone Travelers / Ani-Dax
+YouTube: Dax the Traveler / Timezone Travelers / God's Vessel
 
 
